@@ -12,7 +12,7 @@ type page struct {
 	flags    uint16
 	count    uint16
 	overflow uint32
-	ptr      *byte
+	ptr      *byte //不建议使用uintptr
 }
 
 type branchPageElement struct {
@@ -63,7 +63,7 @@ func (p *page) meta() *meta {
 
 func (p *page) leafPageElement(index uint16) *leafPageElement {
 	offset := index * uint16(leafPageElementSize)
-	res := (*leafPageElement)(unsafe.Pointer(((uintptr)(unsafe.Pointer(&p.ptr)) + (uintptr)(offset))))
+	res := (*leafPageElement)(unsafe.Pointer(((uintptr)(unsafe.Pointer(&p.ptr)) + (uintptr)(offset)))) //uintptr可以做指针算术运算
 	return res
 }
 
@@ -71,7 +71,7 @@ func (p *page) leafPageElements() []leafPageElement {
 	if p.count == 0 {
 		return nil
 	}
-	return ((*[0x7FFFFFF]leafPageElement)(unsafe.Pointer(&p.ptr)))[:]
+	return ((*[0x7FFFFFF]leafPageElement)(unsafe.Pointer(&p.ptr)))[:] //转array，生成slice，slice的len和cap为0x7ffffff
 }
 
 func (p *page) branchPageElement(index uint16) *branchPageElement {

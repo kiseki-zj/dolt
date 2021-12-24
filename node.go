@@ -19,3 +19,17 @@ type inode struct {
 }
 
 type inodes []inode
+
+func (n *node) root() *node {
+	if n.parent == nil {
+		return n
+	}
+	return n.parent.root()
+}
+
+func (n *node) minKeys() int {
+	if n.isLeaf {
+		return 1
+	}
+	return 2
+}

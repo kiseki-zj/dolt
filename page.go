@@ -15,6 +15,9 @@ type page struct {
 	ptr      *byte //不建议使用uintptr
 }
 
+type pages page
+type pgids []pgid
+
 type branchPageElement struct {
 	pos   uint32
 	ksize uint32
@@ -85,4 +88,26 @@ func (p *page) branchPageElements() []branchPageElement {
 		return nil
 	}
 	return ((*[0x7FFFFFF]branchPageElement)(unsafe.Pointer(&p.ptr)))[:]
+}
+
+func (s pgids) Len() int           { return len(s) }
+func (s pgids) Swap(i, j int)      { s[i], s[j] = s[j], s[i] }
+func (s pgids) Less(i, j int) bool { return s[i] < s[j] }
+
+func (n *branchPageElement) key() []byte {
+	ptr := (*[0x7FFFFFF]byte)(unsafe.Pointer(((uintptr)(unsafe.Pointer(n)) + (uintptr)(n.pos))))
+	//不能写成*[]byte,如果这样写，ptr指向一个SliceHeader
+	return ptr[:n.ksize]
+}
+
+func (n *leafPageElement) key() []byte {
+	ptr := (*[0x7FFFFFF]byte)(unsafe.Pointer(((uintptr)(unsafe.Pointer(n)) + (uintptr)(n.pos))))
+	fmt.Println(n.pos)
+	fmt.Println(&ptr[0])
+	return ptr[:n.ksize]
+}
+
+func (n *leafPageElement) value() []byte {
+	ptr := (*[0x7FFFFFF]byte)(unsafe.Pointer(((uintptr)(unsafe.Pointer(n)) + (uintptr)(n.pos))))
+	return ptr[n.ksize : n.ksize+n.vsize]
 }

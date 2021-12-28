@@ -10,14 +10,31 @@ func makepage() []byte {
 	var P [4096]byte
 	pg := (*page)(unsafe.Pointer(&P))
 	pg.id = 1
-
+	pg.flags = leafPageFlag
 	ptr := pg
-	ptr.count = 1
-	e := ptr.branchPageElement(0)
-	e.pos = 123
-	e.ksize = 345
-	e.pgid = 11
-	return ((*[4096]byte)(unsafe.Pointer(ptr)))[:]
+	ptr.count = 3
+	data := (*[0x7FFFFFF]uint32)(unsafe.Pointer(&(ptr.ptr)))
+	data[0] = 1
+	data[1] = 3 * 16
+	data[2] = 1
+	data[3] = 1
+	data[4] = 1
+	data[5] = 2*16 + 2
+	data[6] = 1
+	data[7] = 1
+	data[8] = 1
+	data[9] = 16 + 4
+	data[10] = 1
+	data[11] = 1
+	kv := (*[0x7FFFFFF]byte)(unsafe.Pointer(&data[12]))
+	kv[0] = 'A'
+	kv[1] = 'a'
+	kv[2] = 'B'
+	kv[3] = 'b'
+	kv[4] = 'C'
+	kv[5] = 'c'
+
+	return ((*[4096]byte)(unsafe.Pointer(pg)))[:]
 }
 func TestA(t *testing.T) {
 	bytes := new([4096]byte)

@@ -45,6 +45,10 @@ const (
 	freelistPageFlag = 0x10
 )
 
+const (
+	bucketLeafFlag = 0x01
+)
+
 func (p *page) typ() string {
 	if (p.flags & branchPageFlag) != 0 {
 		return "branch"
@@ -102,8 +106,6 @@ func (n *branchPageElement) key() []byte {
 
 func (n *leafPageElement) key() []byte {
 	ptr := (*[0x7FFFFFF]byte)(unsafe.Pointer(((uintptr)(unsafe.Pointer(n)) + (uintptr)(n.pos))))
-	fmt.Println(n.pos)
-	fmt.Println(&ptr[0])
 	return ptr[:n.ksize]
 }
 

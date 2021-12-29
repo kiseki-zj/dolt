@@ -44,7 +44,7 @@ func (db *DB) mmap(minsz int) error {
 		return err
 	}
 
-	b, err := syscall.Mmap(int(db.file.Fd()), 0, size, syscall.PROT_READ, syscall.MAP_SHARED)
+	b, err := syscall.Mmap(int(db.file.Fd()), 0, size, syscall.PROT_READ|syscall.PROT_WRITE, syscall.MAP_SHARED)
 	if err != nil {
 		return err
 	}
@@ -84,4 +84,10 @@ func (db *DB) close() error {
 	db.file = nil
 	db.path = ""
 	return nil
+}
+
+func _assert(condition bool, msg string, v ...interface{}) {
+	if !condition {
+		panic(fmt.Sprintf("assertion failed: "+msg, v...))
+	}
 }

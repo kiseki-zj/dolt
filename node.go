@@ -341,4 +341,61 @@ func (n *node) rebalance() {
 	if n.size() > threshold && len(n.inodes) > n.minKeys() {
 		return
 	}
+	if n.parent == nil {
+		if !n.isLeaf && len(n.inodes) == 1 {
+			child := n.bucket.node(n.inodes[0].pgid, n)
+			n.isLeaf = child.isLeaf
+			n.inodes = child.inodes[:]
+			n.children = child.children
+			for _, inode := range n.inodes {
+				if child, ok := n.bucket.nodes[inodes.pgid]; ok {
+					child.parent = n
+				}
+			}
+			child.parent = nil
+			delete(n.bucket.nodes, child.pgid)
+			child.free()
+		}
+		return
+	}
+
+	if n.numChildren() == 0 {
+		n.parent.del(n.key)
+		n.parent.removeChild(n)
+		delete(n.bucket.nodes, n.pgid)
+		n.free()
+		n.parent.rebalance()
+		return
+	}
+	_assert(n.parent.numChildren() > 1, "parent must have at least 2 children")
+
+	var target *node
+	var useNextSibling = (n.parent.childIndex(n) == 0)
+	if useNextSibling {
+		target = n.nextSibling()
+	} else {
+		target = n.prevSibling()
+	}
+
+	if useNextSibling {
+		for _, inode := range target.inodes {
+			if child, ok := n.bucket.nodes[inode.pgid]; ok {
+				child.parent.removeChild(child)
+				child.parent = n
+				n.children = append(n.children, child)
+			}
+		}
+
+		n.inodes = append(n.inodes, target.inodes...)
+		n.parent.del(target.key)
+		n.parent.removeChild(target)
+		delete(n.bucket.nodes, target.pgid)
+		target.free()
+	} else {
+		for _, inode := range n.inodes {
+			if child, ok := n.bucket.nodes[inode.pgid]; ok {
+				child.parent.removeChild(child)
+			}
+		}
+	}
 }

@@ -15,8 +15,16 @@ type node struct {
 	key        []byte
 	pgid       pgid
 	parent     *node
-	children   []node
+	children   nodes
 	inodes     inodes
+}
+
+type nodes []*node
+
+func (s nodes) Len() int      { return len(s) }
+func (s nodes) Swap(i, j int) { s[i], s[j] = s[j], s[i] }
+func (s nodes) Less(i, j int) bool {
+	return bytes.Compare(s[i].inodes[0].key, s[j].inodes[0].key) == -1
 }
 
 type inode struct {
@@ -70,7 +78,7 @@ func (n *node) pageElementSize() int {
 	return branchPageElementSize
 }
 
-/*func (n *node) childAt(index int) *node {
+func (n *node) childAt(index int) *node {
 	if n.isLeaf {
 		panic(fmt.Sprintf("invalid childAt(%d) on a leaf node", index))
 	}
@@ -80,14 +88,14 @@ func (n *node) pageElementSize() int {
 func (n *node) childIndex(child *node) int {
 	index := sort.Search(len(n.inodes), func(i int) bool { return bytes.Compare(n.inodes[i], key, child.key) != -1 })
 	return index
-}*/
+}
 
 func (n *node) numChildren() int {
 	return len(n.inodes)
 }
 
 // nextSibling returns the next node with the same parent.
-/*func (n *node) nextSibling() *node {
+func (n *node) nextSibling() *node {
 	if n.parent == nil {
 		return nil
 	}
@@ -108,8 +116,11 @@ func (n *node) prevSibling() *node {
 		return nil
 	}
 	return n.parent.childAt(index - 1)
-}*/
+}
 
+//oldkey=newkey，oldkey存在，是修改value
+//oldkey不存在，是插入
+//oldkey!=newkey，oldkey存在，是把(oldkey,oldvalue)修改为(newkey,value)
 func (n *node) put(oldKey, newKey, value []byte, pgid pgid, flags uint32) {
 	/*
 		if pgid >= n.bucket.tx.meta.pgid {
@@ -211,5 +222,123 @@ func (n *node) write(p *page) {
 		b = b[klen:]
 		copy(b[0:], item.value)
 		b = b[vlen:]
+	}
+}
+
+func (n *node) split(pageSize int) []*node {
+	var nodes []*node
+	node := n
+	for {
+		a, b := node.splitTwo(pageSize)
+		nodes = append(nodes, a)
+		if b == nil {
+			break
+		}
+		node = b
+	}
+	return nodes
+}
+
+func (n *node) splitTwo(pageSize int) (*node, *node) {
+	if len(n.inodes) <= (minKeysPerPage*2) || n.sizeLessThan(pageSize) {
+		return n, nil
+	}
+	//var fillPercent = n.bucket.FillPercent
+	var fillPercent = 0.5
+	//if fillPercent < minFillPercent
+	threshold := int(float64(pageSize) * fillPercent)
+	splitIndex, _ := n.splitIndex(threshold)
+	if n.parent == nil {
+		n.parent = &node{children: []*node{n}}
+	}
+
+	next := &node{isLeaf: n.isLeaf, parent: n.parent}
+	n.parent.children = append(n.parent.children, next)
+	next.inodes = n.inodes[splitIndex:]
+	n.inodes = n.inodes[:splitIndex]
+	//n.bucket.tx.stats.Split++
+
+	return n, next
+}
+
+func (n *node) splitIndex(threshold int) (index, sz int) {
+	sz = pageHeaderSize
+	for i := 0; i < len(n.inodes)-minKeysPerPage; i++ {
+		index = i
+		inode := n.inodes[i]
+		elsize := n.pageElementSize() + len(inode.key) + len(inode.value)
+
+		if i >= minKeysPerPage && sz+elsize > threshold {
+			break
+		}
+		sz += elsize
+	}
+
+	return
+}
+
+func (n *node) spill() error {
+	//var tx = n.bucket.tx
+	if n.spilled {
+		return nil
+	}
+
+	sort.Sort(n.children)
+	for i := 0; i < len(n.children); i++ {
+		if err := n.children[i].spill(); err != nil {
+			return err
+		}
+	}
+	n.children = nil
+
+	var nodes = n.split(4096)
+	for _, node := range nodes {
+		if node.pgid > 0 {
+			//tx.db.freelist.free(tx.meta.txid, tx.page(node.pgid))
+			node.pgid = 0
+		}
+		/*p, err := tx.allocate((node.size() / tx.db.pageSize) + 1)
+		if err != nil {
+			return nil
+		}*/
+		if p.id >= tx.meta.pgid {
+			panic(fmt.Sprintf("pgid (%d) above high water mark (%d)", p.id, tx.meta.pgid))
+		}
+		node.pgid = p.id
+		node.write(p)
+		node.spilled = true
+
+		if node.parent != nil {
+			var key = node.key
+			if key == nil {
+				key = node.inodes[0].key
+			}
+
+			node.parent.put(key, node.inodes[0].key, nil, node.pgid, 0)
+			node.key = node.inodes[0].key
+			_assert(len(node.key) > 0, "spill: zero-length node key")
+		}
+
+		//tx.stats.Spill++
+	}
+	if n.parent != nil && n.parent.pgid == 0 {
+		n.children = nil
+		return n.parent.spill()
+	}
+	return nil
+}
+
+func (n *node) rebalance() {
+	if !n.unbalanced {
+		return
+	}
+	n.unbalanced = false
+
+	//n.bucket.tx.stats.Rebalance++
+
+	//var threshold = n.bucket.tx.db.pageSize / 4
+	var threshold = 4096 / 4
+	if n.size() > threshold && len(n.inodes) > n.minKeys() {
+		return
 	}
 }
